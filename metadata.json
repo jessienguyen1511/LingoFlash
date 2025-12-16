@@ -1,0 +1,7 @@
+{
+  "name": "LingoFlash",
+  "description": "An elegant flashcard application for reviewing English vocabulary and idioms, featuring AI-powered pronunciation.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
