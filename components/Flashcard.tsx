@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { VocabCard } from '../data';
 import { Volume2, Loader2, RotateCw } from 'lucide-react';
-import { playPronunciation } from '../services/geminiService';
+import { playPronunciation, getAudioContext } from '../services/geminiService';
 
 interface FlashcardProps {
   card: VocabCard;
@@ -15,6 +15,18 @@ const Flashcard: React.FC<FlashcardProps> = ({ card, isFlipped, onFlip }) => {
   const handleAudioClick = async (e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent card flip when clicking audio
     if (isPlaying) return;
+
+    // CRITICAL FIX FOR IOS:
+    // Initialize and resume AudioContext immediately within the click handler
+    // before any async operations (like fetching the API).
+    try {
+      const ctx = getAudioContext();
+      if (ctx.state === 'suspended') {
+        await ctx.resume();
+      }
+    } catch (ctxError) {
+      console.warn("Could not resume audio context:", ctxError);
+    }
 
     setIsPlaying(true);
     try {

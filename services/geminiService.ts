@@ -3,6 +3,19 @@ import { GoogleGenAI, Modality } from "@google/genai";
 // Initialize Gemini API
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
+// Singleton AudioContext to maintain user gesture "blessing" across async calls
+let sharedAudioContext: AudioContext | null = null;
+
+export const getAudioContext = (): AudioContext => {
+  if (!sharedAudioContext) {
+    // We do NOT force a sampleRate here. We let the device decide (usually 44.1k or 48k).
+    // Forcing it can fail on some mobile devices.
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    sharedAudioContext = new AudioContextClass();
+  }
+  return sharedAudioContext;
+};
+
 // Helpers for Audio Decoding
 function decode(base64: string) {
   const binaryString = atob(base64);
@@ -17,12 +30,14 @@ function decode(base64: string) {
 async function decodeAudioData(
   data: Uint8Array,
   ctx: AudioContext,
-  sampleRate: number,
+  dataSampleRate: number, // The sample rate of the DATA (Gemini is 24000)
   numChannels: number,
 ): Promise<AudioBuffer> {
   const dataInt16 = new Int16Array(data.buffer);
   const frameCount = dataInt16.length / numChannels;
-  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+  
+  // Create a buffer with the specific sample rate of the audio source
+  const buffer = ctx.createBuffer(numChannels, frameCount, dataSampleRate);
 
   for (let channel = 0; channel < numChannels; channel++) {
     const channelData = buffer.getChannelData(channel);
@@ -43,7 +58,7 @@ export const playPronunciation = async (text: string): Promise<void> => {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
           voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: 'Kore' }, // Clean, female voice suitable for teaching
+            prebuiltVoiceConfig: { voiceName: 'Kore' },
           },
         },
       },
@@ -55,20 +70,21 @@ export const playPronunciation = async (text: string): Promise<void> => {
       throw new Error("No audio data received from Gemini.");
     }
 
-    const outputAudioContext = new (window.AudioContext ||
-      (window as any).webkitAudioContext)({ sampleRate: 24000 });
+    // Use the shared context (which should have been resumed by the UI click handler)
+    const ctx = getAudioContext();
     
-    const outputNode = outputAudioContext.createGain();
-    outputNode.connect(outputAudioContext.destination);
+    const outputNode = ctx.createGain();
+    outputNode.connect(ctx.destination);
 
+    // Gemini returns 24000Hz PCM
     const audioBuffer = await decodeAudioData(
       decode(base64Audio),
-      outputAudioContext,
+      ctx,
       24000,
       1,
     );
 
-    const source = outputAudioContext.createBufferSource();
+    const source = ctx.createBufferSource();
     source.buffer = audioBuffer;
     source.connect(outputNode);
     source.start();
