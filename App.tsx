@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import Flashcard from './components/Flashcard';
-import { vocabList } from './data';
+import Flashcard from './components/Flashcard.tsx';
+import { vocabList } from './data.ts';
 import { ChevronLeft, ChevronRight, Shuffle, BookOpen } from 'lucide-react';
 
 const App: React.FC = () => {

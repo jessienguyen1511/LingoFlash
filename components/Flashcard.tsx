@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { VocabCard } from '../data';
+import { VocabCard } from '../data.ts';
 import { Volume2, Loader2 } from 'lucide-react';
-import { playPronunciation, wakeUpAudioContext } from '../services/geminiService';
+import { playPronunciation, wakeUpAudioContext } from '../services/geminiService.ts';
 
 interface FlashcardProps {
   card: VocabCard;
