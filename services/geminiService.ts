@@ -3,17 +3,44 @@ import { GoogleGenAI, Modality } from "@google/genai";
 // Initialize Gemini API
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-// Singleton AudioContext to maintain user gesture "blessing" across async calls
+// Singleton AudioContext
 let sharedAudioContext: AudioContext | null = null;
 
 export const getAudioContext = (): AudioContext => {
   if (!sharedAudioContext) {
-    // We do NOT force a sampleRate here. We let the device decide (usually 44.1k or 48k).
-    // Forcing it can fail on some mobile devices.
+    // Cross-browser support
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
     sharedAudioContext = new AudioContextClass();
   }
   return sharedAudioContext;
+};
+
+// CRITICAL IOS FIX:
+// Play a silent sound to forcefully wake up the audio engine.
+// Simply calling resume() is sometimes not enough on WebKit if followed by async work.
+export const wakeUpAudioContext = async () => {
+  const ctx = getAudioContext();
+  
+  // Always try to resume
+  if (ctx.state === 'suspended') {
+    try {
+      await ctx.resume();
+    } catch (e) {
+      console.error("Context resume failed", e);
+    }
+  }
+
+  // Play a tiny bit of silence
+  // This creates a rigid "running" state for the audio context
+  try {
+    const buffer = ctx.createBuffer(1, 1, 22050);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    source.start(0);
+  } catch (e) {
+    console.error("Silent buffer playback failed", e);
+  }
 };
 
 // Helpers for Audio Decoding
@@ -30,13 +57,19 @@ function decode(base64: string) {
 async function decodeAudioData(
   data: Uint8Array,
   ctx: AudioContext,
-  dataSampleRate: number, // The sample rate of the DATA (Gemini is 24000)
+  dataSampleRate: number,
   numChannels: number,
 ): Promise<AudioBuffer> {
-  const dataInt16 = new Int16Array(data.buffer);
+  // Ensure we have an even number of bytes for 16-bit PCM
+  let bufferToUse = data.buffer;
+  if (data.byteLength % 2 !== 0) {
+     console.warn("Odd byte length for 16-bit PCM, trimming last byte");
+     bufferToUse = data.buffer.slice(0, data.byteLength - 1);
+  }
+
+  const dataInt16 = new Int16Array(bufferToUse);
   const frameCount = dataInt16.length / numChannels;
   
-  // Create a buffer with the specific sample rate of the audio source
   const buffer = ctx.createBuffer(numChannels, frameCount, dataSampleRate);
 
   for (let channel = 0; channel < numChannels; channel++) {
@@ -70,13 +103,10 @@ export const playPronunciation = async (text: string): Promise<void> => {
       throw new Error("No audio data received from Gemini.");
     }
 
-    // Use the shared context (which should have been resumed by the UI click handler)
     const ctx = getAudioContext();
-    
     const outputNode = ctx.createGain();
     outputNode.connect(ctx.destination);
 
-    // Gemini returns 24000Hz PCM
     const audioBuffer = await decodeAudioData(
       decode(base64Audio),
       ctx,

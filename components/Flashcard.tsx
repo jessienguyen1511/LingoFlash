@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { VocabCard } from '../data';
-import { Volume2, Loader2, RotateCw } from 'lucide-react';
-import { playPronunciation, getAudioContext } from '../services/geminiService';
+import { Volume2, Loader2 } from 'lucide-react';
+import { playPronunciation, wakeUpAudioContext } from '../services/geminiService';
 
 interface FlashcardProps {
   card: VocabCard;
@@ -16,17 +16,9 @@ const Flashcard: React.FC<FlashcardProps> = ({ card, isFlipped, onFlip }) => {
     e.stopPropagation(); // Prevent card flip when clicking audio
     if (isPlaying) return;
 
-    // CRITICAL FIX FOR IOS:
-    // Initialize and resume AudioContext immediately within the click handler
-    // before any async operations (like fetching the API).
-    try {
-      const ctx = getAudioContext();
-      if (ctx.state === 'suspended') {
-        await ctx.resume();
-      }
-    } catch (ctxError) {
-      console.warn("Could not resume audio context:", ctxError);
-    }
+    // Force wake up AudioContext on iOS
+    // This plays a silent buffer to ensure the context is running before the network request finishes
+    await wakeUpAudioContext();
 
     setIsPlaying(true);
     try {
@@ -34,14 +26,13 @@ const Flashcard: React.FC<FlashcardProps> = ({ card, isFlipped, onFlip }) => {
     } catch (err) {
         console.error("Failed to play audio", err);
     } finally {
-      // Small timeout to reset loading state visually if audio is short
       setTimeout(() => setIsPlaying(false), 1000);
     }
   };
 
   return (
     <div 
-      className="relative w-full max-w-md h-96 perspective-1000 cursor-pointer group"
+      className="relative w-full max-w-md h-96 perspective-1000 cursor-pointer group select-none"
       onClick={onFlip}
     >
       <div 
@@ -67,9 +58,9 @@ const Flashcard: React.FC<FlashcardProps> = ({ card, isFlipped, onFlip }) => {
                 onClick={handleAudioClick}
                 className={`p-4 rounded-full transition-all duration-300 ${
                   isPlaying 
-                    ? 'bg-blue-100 text-blue-600' 
+                    ? 'bg-blue-100 text-blue-600 scale-110' 
                     : 'bg-gray-100 text-gray-600 hover:bg-blue-50 hover:text-blue-500 hover:scale-110'
-                }`}
+                } active:scale-95 touch-manipulation`}
                 aria-label="Play pronunciation"
               >
                 {isPlaying ? (
